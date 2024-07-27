@@ -1,158 +1,75 @@
-# PRODIGY_DS_02
+import subprocess
 import os
-import kaggle
+import zipfile
 import pandas as pd
-
-# Ensure the .kaggle directory exists
-kaggle_dir = r'C:\Users\LENOVO\.kaggle'
-os.makedirs(kaggle_dir, exist_ok=True)
-
-# Define the path for the kaggle.json file
-kaggle_json_path = os.path.join(kaggle_dir, 'kaggle.json')
-
-# Check if kaggle.json exists
-if not os.path.isfile(kaggle_json_path):
-    raise FileNotFoundError(f'{kaggle_json_path} not found. Please place your kaggle.json file in the .kaggle directory.')
-
-# Initialize the Kaggle API with authentication
-kaggle.api.authenticate()
-
-# Download the datasets
-try:
-    kaggle.api.dataset_download_files('c/titanic', path='data', unzip=True)
-except Exception as e:
-    print(f'Error: {e}')
-
-# Read the CSV files into DataFrames
-try:
-    train_df = pd.read_csv('data/train.csv')
-    test_df = pd.read_csv('data/test.csv')
-    gender_submission_df = pd.read_csv('data/gender_submission.csv')
-
-    # Display the first few rows of each DataFrame
-    print("Train DataFrame:")
-    print(train_df.head())  # Use the correct variable name
-
-    print("\nTest DataFrame:")
-    print(test_df.head())
-
-    print("\nGender Submission DataFrame:")
-    print(gender_submission_df.head())
-except FileNotFoundError as e:
-    print(f'File not found: {e}')
-except pd.errors.EmptyDataError as e:
-    print(f'Error reading CSV file: {e}')
-
-
-
-
-
-
-
-# Display the first few rows and check column names
-print(train_df.head())
-print(train_df.columns)
-
-# Check for missing columns or data issues
-if 'Embarked' in train_df.columns:
-    print(train_df['Embarked'].isnull().sum(), "missing values in 'Embarked'")
-
-# Data Cleaning for Train Dataset
-if 'Age' in train_df.columns:
-    train_df['Age'].fillna(train_df['Age'].median(), inplace=True)
-else:
-    print("Column 'Age' not found in train dataset.")
-
-if 'Embarked' in train_df.columns:
-    train_df['Embarked'].fillna(train_df['Embarked'].mode()[0], inplace=True)
-else:
-    print("Column 'Embarked' not found in train dataset.")
-
-if 'Cabin' in train_df.columns:
-    train_df.drop(columns=['Cabin'], inplace=True)
-else:
-    print("Column 'Cabin' not found in train dataset.")
-
-# Data Cleaning for Test Dataset
-if 'Age' in test_df.columns:
-    test_df['Age'].fillna(test_df['Age'].median(), inplace=True)
-else:
-    print("Column 'Age' not found in test dataset.")
-
-if 'Fare' in test_df.columns:
-    test_df['Fare'].fillna(test_df['Fare'].median(), inplace=True)
-else:
-    print("Column 'Fare' not found in test dataset.")
-
-if 'Cabin' in test_df.columns:
-    test_df.drop(columns=['Cabin'], inplace=True)
-else:
-    print("Column 'Cabin' not found in test dataset.")
-
-# Summary statistics of the training dataset
-print(train_df.describe())
-
-import matplotlib.pyplot as plt
+import numpy as np
 import seaborn as sns
+import matplotlib.pyplot as plt
 
-# Set the style of the plots
-sns.set(style="whitegrid")
+os.environ['KAGGLE_USERNAME'] = '**********' #Put your user name from the API Token downloaded from your kaggle account
+os.environ['KAGGLE_KEY'] = ' *********************' #Put your key from the API Token downloaded from your kaggle account
 
-# Count plot of survivors
-plt.figure(figsize=(10, 6))
-sns.countplot(x='Survived', data=train_df)
-plt.title('Count of Survivors')
+kaggle_path = r'C:\Users\LENOVO\AppData\Roaming\Python\Python312\Scripts\kaggle.exe'
+download_path = 'C:/Users/LENOVO/Downloads/titanic_data'
+os.makedirs(download_path, exist_ok=True)
+subprocess.run([kaggle_path, 'competitions', 'download', '-c', 'titanic', '-p', download_path])
+
+zip_file_path = os.path.join(download_path, 'titanic.zip')  # Ensure this matches the downloaded ZIP file name
+with zipfile.ZipFile(zip_file_path, 'r') as zip_ref:
+    zip_ref.extractall(download_path)
+
+train_data = pd.read_csv(os.path.join(download_path, 'train.csv'))
+test_data = pd.read_csv(os.path.join(download_path, 'test.csv'))
+gender_submission = pd.read_csv(os.path.join(download_path, 'gender_submission.csv'))
+
+print(train_data.isnull().sum())
+train_data['Age'] = train_data['Age'].fillna(train_data['Age'].median())
+train_data['Embarked'] = train_data['Embarked'].fillna(train_data['Embarked'].mode()[0])
+train_data.drop(columns=['Cabin'], inplace=True)
+train_data['Sex'] = train_data['Sex'].map({'male': 0, 'female': 1})
+train_data = pd.get_dummies(train_data, columns=['Embarked'], drop_first=True)
+numeric_train_data = train_data.select_dtypes(include=[np.number])
+
+#correlation matrix
+corr = numeric_train_data.corr()
+
+# Visualization
+def add_labels(ax, labels, is_percentage=False):
+    for p in ax.patches:
+        height = p.get_height()
+        text = f'{height:.2f}%' if is_percentage else f'{height}'
+        ax.annotate(text, (p.get_x() + p.get_width() / 2., height),
+        ha='center', va='bottom', fontsize=12)
+
+
+
+
+
+# Survival counts
+plt.figure(figsize=(8, 6))
+ax = sns.countplot(x='Survived', data=train_data)
+plt.title('Survival Counts')
+add_labels(ax, train_data['Survived'].value_counts())
+plt.xlabel('Survived (0: No, 1: Yes)')
 plt.show()
 
-# Count plot of passengers by class
-plt.figure(figsize=(10, 6))
-sns.countplot(x='Pclass', data=train_df)
-plt.title('Count of Passengers by Class')
+# Survival Rate by Gender
+plt.figure(figsize=(8, 6))
+ax = sns.barplot(x='Sex', y='Survived', data=train_data)
+plt.title('Survival Rate by Gender')
+
+# Calculate survival rate percentages by gender
+survival_rates = train_data.groupby('Sex')['Survived'].mean() * 100
+add_labels(ax, survival_rates, is_percentage=True)
+plt.xlabel('Gender (0: Male, 1: Female)')
+plt.ylabel('Survival Rate (%)')
 plt.show()
 
-# Distribution of ages
-plt.figure(figsize=(10, 6))
-sns.histplot(train_df['Age'], kde=True)
-plt.title('Distribution of Ages')
+# Correlation Heatmap
+plt.figure(figsize=(10, 8))
+sns.heatmap(corr, annot=True, cmap='coolwarm', fmt='.2f')
+plt.title('Correlation Heatmap')
 plt.show()
 
-# Box plot of ages by class
-plt.figure(figsize=(10, 6))
-sns.boxplot(x='Pclass', y='Age', data=train_df)
-plt.title('Box Plot of Ages by Class')
-plt.show()
 
-# Count plot of embarked locations
-plt.figure(figsize=(10, 6))
-sns.countplot(x='Embarked', data=train_df)
-plt.title('Count of Embarked Locations')
-plt.show()
-
-# Survival rate by class
-plt.figure(figsize=(10, 6))
-sns.barplot(x='Pclass', y='Survived', data=train_df)
-plt.title('Survival Rate by Class')
-plt.show()
-
-# Survival rate by sex
-plt.figure(figsize=(10, 6))
-sns.barplot(x='Sex', y='Survived', data=train_df)
-plt.title('Survival Rate by Sex')
-plt.show()
-
-# Survival rate by age
-plt.figure(figsize=(10, 6))
-sns.histplot(train_df[train_df['Survived'] == 1]['Age'], kde=True, color='green', label='Survived')
-sns.histplot(train_df[train_df['Survived'] == 0]['Age'], kde=True, color='red', label='Did not survive')
-plt.title('Survival Rate by Age')
-plt.legend()
-plt.show()
-
-# Pairplot to see relationships between features
-sns.pairplot(train_df.dropna(), hue='Survived', diag_kind='kde')
-plt.show()
-
-# Merging the gender submission with the test dataset for comparison
-test_df_with_submission = test_df.merge(gender_submission_df, on='PassengerId')
-print(test_df_with_submission.head())
 
